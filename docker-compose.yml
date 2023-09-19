@@ -1,0 +1,115 @@
+version: '3'
+
+networks:
+  proxy:
+    name: traefik-proxy
+  backend:
+    external: false
+
+services:
+  metabank-frontend:
+    image: ghcr.io/alexxeev/metabank-front:main
+    restart: unless-stopped
+    depends_on:
+      - metabank-backend
+    environment:
+      - API_URL=api.${DOMAIN}
+    networks:
+      proxy:
+      backend:
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-proxy"
+      # Router
+      - "traefik.http.routers.metabank-front.entryPoints=https"
+      - "traefik.http.routers.metabank-front.rule=Host(`$DOMAIN`)"
+      - "traefik.http.routers.metabank-front.tls.certresolver=http-resolver"
+      # Service
+      - "traefik.http.routers.metabank-front.service=metabank-front-svc"
+      - "traefik.http.services.metabank-front-svc.loadbalancer.server.port=80"
+
+  metabank-backend:
+    image: ghcr.io/alexxeev/metabank-backend:master
+    restart: unless-stopped
+    networks:
+      proxy:
+      backend:
+    volumes:
+      - ./databases:/app/db
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-proxy"
+      # Router
+      - "traefik.http.routers.metabank-api.entryPoints=https"
+      - "traefik.http.routers.metabank-api.rule=Host(`api.$DOMAIN`)"
+      - "traefik.http.routers.metabank-api.tls.certresolver=http-resolver"
+      #Service
+      - "traefik.http.routers.metabank-api.service=metabank-svc"
+      - "traefik.http.services.metabank-svc.loadbalancer.server.port=8080"
+  
+  traefik:
+    image: traefik:latest
+    command:
+    #Enable Traefik Dashbard and internal API
+      - --api=true
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --api.debug=true
+
+      - --log.level=WARN
+
+      - --providers.docker=true
+      - --providers.docker.exposedByDefault=false
+      - --providers.docker.network=traefik-proxy
+
+      - --entryPoints.http.address=:80
+      - --entryPoints.dashboard.address=:9090
+      - --entryPoints.https.address=:443
+
+      - --certificatesresolvers.http-resolver.acme.httpchallenge=true
+      - --certificatesresolvers.http-resolver.acme.httpchallenge.entrypoint=http
+      - --certificatesresolvers.http-resolver.acme.email=$CERT_EMAIL
+      - --certificatesresolvers.http-resolver.acme.storage=/letsencrypt/acme.json
+      # Uncomment for cert testing; comment back after successful testing attempt
+      #- "--certificatesresolvers.http-resolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+    networks:
+      proxy:
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./letsencrypt:/letsencrypt
+    environment:
+      DOMAIN: ${DOMAIN}
+      CERT_EMAIL: ${CERT_EMAIL}
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-proxy"
+      # Router - Traefik Dashbard
+      - "traefik.http.routers.traefik-api.entrypoints=http"
+      - "traefik.http.routers.traefik-api.rule=Host(`monitor.$DOMAIN`)"
+      - "traefik.http.routers.traefik-api.tls.certresolver=http-resolver"
+      # Service - Traefik Dashbard
+      - "traefik.http.routers.traefik-api.service=api@internal"
+      # # HTTP-to-HTTPS Redirect
+      - "traefik.http.routers.http-catchall.entrypoints=http"
+      - "traefik.http.routers.http-catchall.rule=HostRegexp(`{host:.+}`)"
+      - "traefik.http.routers.http-catchall.middlewares=redirect-to-https"
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+    restart: always
+    
+  # watchtower:
+  #   image: containrrr/watchtower
+  #   restart: always
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #     - /etc/timezone:/etc/timezone:ro
+  #   environment:
+  #     - WATCHTOWER_CLEANUP=true
+  #     - WATCHTOWER_INCLUDE_RESTARTING=true
+  #   container_name: watchtower
+  #   command: metabank-frontend metabank-backend traefik watchtower
+  #   networks:
+  #     backend:
+
