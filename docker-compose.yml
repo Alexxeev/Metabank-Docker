@@ -97,17 +97,3 @@ services:
       - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
     restart: always
     
-  # watchtower:
-  #   image: containrrr/watchtower
-  #   restart: always
-  #   volumes:
-  #     - /var/run/docker.sock:/var/run/docker.sock
-  #     - /etc/timezone:/etc/timezone:ro
-  #   environment:
-  #     - WATCHTOWER_CLEANUP=true
-  #     - WATCHTOWER_INCLUDE_RESTARTING=true
-  #   container_name: watchtower
-  #   command: metabank-frontend metabank-backend traefik watchtower
-  #   networks:
-  #     backend:
-
