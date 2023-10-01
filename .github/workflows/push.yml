@@ -1,0 +1,22 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  push_to_server:
+    name: Push latest version of docker-compose.yml to the server
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Install SSH Keys to the server
+      run: |
+        install -m 600 -D /dev/null ~/.ssh/id_rsa
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ secrets.SSH_HOST }} > ~/.ssh/known_hosts
+    - name: Connect to the server via SSH and pull latest changes
+      run: ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "(git clone https://github.com/${{ GITHUB_REPOSITORY }}.git ${{ secrets.WORK_DIR }} 2> /dev/null || git -C ${{ secrets.WORK_DIR }} pull) && cd ${{ secrets.WORK_DIR }} && echo DOMAIN=${{ secrets.SSH_HOST }} > .env && echo CERT_EMAIL=${{ secrets.CERT_EMAIL }} >> .env && docker compose pull && docker compose up -d --build && yes | docker image prune && exit"
+    - name: cleanup
+      run: rm -rf ~/.ssh
